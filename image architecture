@@ -1,0 +1,163 @@
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras import datasets, layers, models
+import matplotlib.pyplot as plt
+from matplotlib.ticker import PercentFormatter
+from matplotlib.ticker import MaxNLocator
+import matplotlib.ticker as ticker
+import random
+from numpy.random import seed
+#from keras.optimizers import SGD
+import numpy as np
+import os, sys, math
+#import PIL
+from PIL import Image
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.layers import BatchNormalization
+seed_value = 7
+os.environ['PYTHONASHSEED']=str(seed_value)
+random.seed(seed_value)
+np.random.seed(seed_value)
+tf.random.set_seed(seed_value)
+os.environ['PYTHONASHSEED']=str(seed)
+# Directories to save files
+historyDir = '/content/gdrive/My Drive/Final_GRACE_Models/NNhistoriesImages/'
+modelsDir = '/content/gdrive/My Drive/Final_GRACE_Models/NNmodelsImages/'
+region = "Aus"
+file_name_2 = "A"
+pathToSampleImage = '/content/gdrive/MyDrive/GRACE_Data/SEES_Testing_Imgs/{}/11/DDK2_200311_GRACE_GAC_sum_AOHISZero_120_0_WH_trainingImg.{}.jpg'.format(region, file_name_2)
+
+sampleImage = Image.open(pathToSampleImage)
+print('Image size:')
+print(sampleImage.size)
+ImgWidth=sampleImage.size[0]
+ImgHeight=sampleImage.size[1]
+
+ImgWidth_resample = math.floor(ImgWidth/10)
+ImgHeight_resample = math.floor(ImgHeight/10)
+batchSize = 4
+
+print('Resampled Image size: ')
+print("(" + str(ImgWidth_resample) + ", " + str(ImgHeight_resample) + ")")
+train_dataset= \
+    tf.keras.preprocessing.image_dataset_from_directory('/content/gdrive/MyDrive/GRACE_Data/SEES_Training_Imgs/{}'.format(region), #change for each user
+     labels='inferred', #data in directory are sorted into folders for each class
+     label_mode='categorical', #in multiple categories,change to int if u put numbers
+     class_names=['1','2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'],
+     color_mode='rgb',
+     batch_size=batchSize,
+     image_size=(ImgHeight_resample, ImgWidth_resample)
+     )
+
+
+test_dataset=tf.keras.preprocessing.image_dataset_from_directory('/content/gdrive/MyDrive/GRACE_Data/SEES_Testing_Imgs/{}'.format(region), #change for each user
+     labels='inferred', #data in directory are sorted into folders for each class
+     label_mode='categorical', #in multiple categories,change to int if u put numbers
+     class_names=['1','2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'],
+     color_mode='rgb',
+     batch_size=batchSize,
+     image_size=(ImgHeight_resample, ImgWidth_resample)
+     )
+
+
+print('Testdataset:', test_dataset)
+#Model Architecture  ###Control w/ re-arranged preprocessing & NO Batch Norm
+
+# Final Decided Model
+def model1():
+  model = models.Sequential()
+  model.add(layers.experimental.preprocessing.Rescaling(1./255, input_shape=(ImgHeight_resample, ImgWidth_resample, 3))) # channels should be 3 (since color image)
+  model.add(layers.Conv2D(16, (2, 2), padding='same', activation='relu', input_shape=(ImgHeight_resample, ImgWidth_resample, 3)))
+  #model.add(BatchNormalization())#
+  model.add(layers.MaxPooling2D((2, 2)))
+  model.add(layers.Conv2D(32, (3, 3), padding='same', activation='relu'))
+  model.add(layers.MaxPooling2D((2, 2)))
+  model.add(layers.Conv2D(64, (3, 3), padding='same', activation='relu'))
+  model.add(layers.MaxPooling2D((2, 2)))
+  model.add(layers.Conv2D(128, (3, 3), padding='same', activation='relu'))
+
+  model.add(layers.Flatten())
+  model.add(layers.Dense(64, activation='relu'))
+  model.add(layers.Dense(12, activation='softmax'))
+  model.compile(optimizer='adam',
+                loss=tf.keras.losses.CategoricalCrossentropy(from_logits=False),
+                metrics=['accuracy'], experimental_run_tf_function=False)
+  return model
+  #Model Architecture  ###Stride/downsampling & 1 batchnorm & Orig Flatten & FCL ########YESSSSS
+#Option2 (batchnorm replacement for preprocess)
+def model2():
+  model = models.Sequential()
+  model.add(layers.experimental.preprocessing.Rescaling(1./255, input_shape=(ImgHeight_resample, ImgWidth_resample, 3)))
+  model.add(layers.Conv2D(16, (2, 2),strides=2,  activation='relu', input_shape=(ImgHeight_resample, ImgWidth_resample, 3)))
+  model.add(BatchNormalization())#
+  model.add(layers.MaxPooling2D((2, 2)))#1
+  model.add(layers.Conv2D(32, (3, 3),strides=2,  activation='relu'))
+  model.add(layers.MaxPooling2D((2, 2)))#1
+  model.add(layers.Conv2D(64, (3, 3),strides=2,  activation='relu'))
+  model.add(layers.MaxPooling2D((2, 2)))#1
+  model.add(layers.Conv2D(128, (3, 3),strides=2, padding='same', activation='relu'))
+  
+  model.add(layers.Flatten())
+  model.add(layers.Dense(64, activation='relu'))
+  model.add(layers.Dense(12, activation='softmax'))
+
+  model.compile(optimizer='adam',
+                loss=tf.keras.losses.CategoricalCrossentropy(from_logits=False),
+                metrics=['accuracy'], experimental_run_tf_function=False)
+
+  return model
+  #Model Architecture #Stride/downsampling & 1 batchNorm & GAP
+def model3():
+  model = models.Sequential()
+  model.add(layers.experimental.preprocessing.Rescaling(1./255, input_shape=(ImgHeight_resample, ImgWidth_resample, 3)))
+  model.add(layers.Conv2D(16, (2, 2),strides=2,  activation='relu', input_shape=(ImgHeight_resample, ImgWidth_resample, 3)))
+  model.add(BatchNormalization())#
+  model.add(layers.MaxPooling2D((2, 2)))#1
+  model.add(layers.Conv2D(32, (3, 3),strides=2,  activation='relu'))
+  model.add(layers.MaxPooling2D((2, 2)))#1
+  model.add(layers.Conv2D(64, (3, 3),strides=2,  activation='relu'))
+  model.add(layers.MaxPooling2D((2, 2)))#1
+  model.add(layers.Conv2D(128, (3, 3),strides=2, padding='same', activation='relu'))
+
+  model.add(layers.GlobalAveragePooling2D())
+  model.add(layers.Dense(12, activation='softmax'))
+
+  model.compile(optimizer='adam',
+                loss=tf.keras.losses.CategoricalCrossentropy(from_logits=False),
+                metrics=['accuracy'], experimental_run_tf_function=False)
+  return model
+  model = model2()
+model.summary()
+epoch_num = 30
+
+history = model.fit(train_dataset, epochs=epoch_num, validation_data=test_dataset, batch_size =batchSize )
+
+# Saving the model/history
+model.save(modelsDir+'my_model')
+
+trainingHistory_arr = np.array(history.history['accuracy'])
+testingHistory_arr = np.array(history.history['val_accuracy'])
+np.save(historyDir+'trainingHistory_p1Model.npy',trainingHistory_arr,allow_pickle=True,fix_imports=True)
+np.save(historyDir+'testingHistory_p1Model.npy',testingHistory_arr,allow_pickle=True,fix_imports=True)
+
+epochsXAxis = np.arange(1, epoch_num+1)
+np.save(historyDir+'epochs_p1Model.npy', epochsXAxis,allow_pickle=True,fix_imports=True)
+# Plotting the data
+f,ax = plt.subplots(1)
+plt.plot(epochsXAxis,trainingHistory_arr,'o-',color='indigo',label='Training Accuracy')
+plt.plot(epochsXAxis,testingHistory_arr, 'o-',color='darkgreen',label = 'Testing Accuracy') #Change Information in this line
+ax.grid(which='minor', alpha=0.2)
+ax.grid(which='major', alpha=0.7)
+plt.xlabel('Epoch', fontsize=12)
+plt.ylabel('Accuracy', fontsize=12)
+ax.yaxis.set_major_formatter(PercentFormatter(1.0))
+plt.ylim([0, 1])
+ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
+ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+plt.legend(loc='lower right')
+plt.savefig(historyDir+'savedModel.png')
+
+
+plt.show()
+print(history.history['accuracy'][-1] * 100)
+print(history.history['val_accuracy'][-1] * 100)
